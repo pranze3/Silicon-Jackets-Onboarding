@@ -1,0 +1,581 @@
+%TAG ! tag:flow.stylus.cadence.com,0.1:
+---
+#############################################################################################
+# Flow  Setup
+#############################################################################################
+# Generated using: Flowkit 23.10-a010_1
+# Command: write_flow_template -type stylus -tools {genus innovus tempus quantus voltus} -optional_feature {report_inline report_lec opt_signoff report_pba report_static_ir report_dynamic_ir}
+
+# Provide a memorable comment to describe this yaml file
+remarks:
+
+# Directory root of the flow scripts, can be used with file join to normalize paths to flow files.
+# Relative paths are normalized in context of the current file's location
+init_flow_directory: .
+
+# Specify scripts that will be automatically sourced in all tools
+#   these scripts will be run every time each tool initializes
+include_scripts:
+
+# Specify scripts that define procs
+#   these are available during flow_step execution
+include_procs:
+
+#############################################################################################
+# Feature Definition
+#############################################################################################
+# +--------------------+-------------------------------------------------------------------+----------+---------+-------+
+# | Feature            | Description                                                       | Value    | Default | Valid |
+# +--------------------+-------------------------------------------------------------------+----------+---------+-------+
+# | -dynamic_view      | single dynamic analysis_view to activate                          |          |         |       |
+# | -hold_views        | list of hold analysis_views to activate                           |          |         |       |
+# | -leakage_view      | single leakage analysis_view to activate                          |          |         |       |
+# | -opt_signoff       | Run opt_signoff during implementation flow                        | optional |         | 0 1 {} |
+# | -report_dynamic_ir | Report dynamic rail analysis                                      | optional |         | 0 1 {} |
+# --- the following features are mutually exclusive (report_style group)
+# | -report_inline     | Run report generation as part of parent flow versus schedule_flow | optional |         | 0 1 {} |
+# ---
+# | -report_lec        | Add LEC dofile generation and checks to the flow                  | optional |         | 0 1 {} |
+# | -report_pba        | Enable PBA analysis and report generation                         | optional |         | 0 1 {} |
+# | -report_static_ir  | Report static rail analysis                                       | optional |         | 0 1 {} |
+# | -setup_views       | list of setup analysis_views to activate                          |          |         |       |
+# +--------------------+-------------------------------------------------------------------+----------+---------+-------+
+define_feature:
+  report_inline:
+    description: Run report generation as part of parent flow versus schedule_flow
+    type: bool
+  report_lec:
+    description: Add LEC dofile generation and checks to the flow
+    type: bool
+  report_pba:
+    description: Enable PBA analysis and report generation
+    type: bool
+  opt_signoff:
+    description: Run opt_signoff during implementation flow
+    type: bool
+  report_static_ir:
+    description: Report static rail analysis
+    type: bool
+  report_dynamic_ir:
+    description: Report dynamic rail analysis
+    type: bool
+  setup_views:
+    description: list of setup analysis_views to activate
+    type: string
+    required: 0
+  hold_views:
+    description: list of hold analysis_views to activate
+    type: string
+    required: 0
+  dynamic_view:
+    description: single dynamic analysis_view to activate
+    type: string
+    required: 0
+  leakage_view:
+    description: single leakage analysis_view to activate
+    type: string
+    required: 0
+
+# Optional features in the above table can enabled below by adding them as space separated options
+#   eg: features: -report_inline -report_lec
+features:
+
+#############################################################################################
+# Flow Step Definitions
+#
+# default_flow_steps : Flow steps that come from the tool templates (write_flow_template)
+#                       DO NOT MODIFY
+# tech_flow_steps    : Technology dependent flow steps that are required to place, route and
+#                       optimize a DRC clean design
+# ip_flow_steps      : Flow steps for integrating IP
+# user_flow_steps    : Flow steps which require user modifications to replace PLACEHOLDER
+#                       content and fine tune the flow for specific needs
+#
+#############################################################################################
+default_flow_steps:
+  - flow/common_flows.tcl
+  - flow/common_steps.tcl
+  - flow/genus_steps.tcl
+  - flow/innovus_steps.tcl
+  - flow/tempus_steps.tcl
+  - flow/voltus_steps.tcl
+
+tech_flow_steps:
+
+ip_flow_steps:
+
+user_flow_steps:
+  - design_config.tcl
+  - eco_config.tcl
+  - flow_config.tcl
+  - genus_config.tcl
+  - innovus_config.tcl
+  - tempus_config.tcl
+  - voltus_config.tcl
+
+# Specify the flows that will be run, in order
+flow_current: synthesis implementation
+
+#############################################################################################
+# General Flow Configuration
+#############################################################################################
+
+# Identify the simple design data yaml file to be used
+design_yaml: setup.yaml
+
+#############################################################################################
+# Flow Definitions
+#
+#  Common modifications are:
+#    1. comment out a step by adding in a '#', eg  #  - step_does_not_run:
+#    2. delete a line to remove the step
+#    3. reorder defined flow_steps and flows
+#    4. add a single command inline,           eg # CMD_<step_name>: <cmd>
+#    5. add file contents inline,              eg # FILE_<step_name>: <filename>
+#    6. change the parameters, see the comment at the end of each line
+#############################################################################################
+flows:
+
+#-------------------------------------------------------------------------------
+# synthesis
+#-------------------------------------------------------------------------------
+  synthesis:
+    args: -tool genus -owner cadence -skip_metric -tool_options -disable_user_startup
+    features:
+    steps:
+      - syn_generic:
+          args: -owner cadence
+          features:
+          steps:
+            - block_start:
+            - init_elaborate:
+            - init_design:
+                args: -owner cadence
+                features:
+                steps:
+                  - read_mmmc:
+                  - read_physical:
+                  - read_hdl:
+                  - read_power_intent:
+                  - run_init_design:
+            - init_genus:
+            - set_dont_use:
+            - commit_power_intent:
+            - run_syn_generic:
+            - block_finish:
+            - report_synth:
+                enabled: "!report_none && report_inline && !report_defer"
+            - SCHEDULE:
+                args: -flow report_synth -include_in_metrics
+                enabled: "!report_none && !report_inline && !report_defer"
+      - syn_map:
+          args: -owner cadence
+          features:
+          steps:
+            - block_start:
+            - init_genus:
+            - run_syn_map:
+            - block_finish:
+            - report_synth:
+                enabled: "!report_none && report_inline && !report_defer"
+            - SCHEDULE:
+                args: -flow report_synth -include_in_metrics
+                enabled: "!report_none && !report_inline && !report_defer"
+            - genus_to_lec:
+                enabled: "report_lec"
+      - syn_opt:
+          args: -owner cadence
+          features:
+          steps:
+            - block_start:
+            - init_genus:
+            - run_syn_opt:
+            - block_finish:
+            - report_synth:
+                enabled: "!report_none && report_inline && !report_defer"
+            - SCHEDULE:
+                args: -flow report_synth -include_in_metrics
+                enabled: "!report_none && !report_inline && !report_defer"
+            - genus_to_lec:
+                enabled: "report_lec"
+
+#-------------------------------------------------------------------------------
+# implementation
+#-------------------------------------------------------------------------------
+  implementation:
+    args: -tool innovus -owner cadence -skip_metric -tool_options -disable_user_startup
+    features:
+    steps:
+      - floorplan:
+          args: -owner cadence
+          features:
+          steps:
+            - block_start:
+            - init_innovus:
+            - init_floorplan:
+            - commit_power_intent:
+            - add_tracks:
+            - block_finish:
+            - write_output_screenshot:
+            - report_floorplan:
+                args: -owner cadence
+                features:
+                enabled: "!report_none && report_inline && !report_defer"
+                steps:
+                  - report_start:
+                  - init_innovus:
+                  - report_check_design:
+                  - report_area_innovus:
+                  - report_route_drc:
+                  - report_finish:
+            - SCHEDULE:
+                args: -flow report_floorplan -include_in_metrics
+                enabled: "!report_none && !report_inline && !report_defer"
+            - innovus_to_lec:
+                enabled: "report_lec"
+      - prects:
+          args: -owner cadence
+          features:
+          steps:
+            - block_start:
+            - init_innovus:
+            - add_clock_spec:
+            - add_clock_route_types:
+            - commit_route_types:
+            - run_place_opt:
+            - block_finish:
+            - write_output_screenshot:
+            - report_prects:
+                args: -owner cadence
+                features:
+                enabled: "!report_none && report_inline && !report_defer"
+                steps:
+                  - report_start:
+                  - init_innovus:
+                  - report_check_design:
+                  - report_area_innovus:
+                  - report_late_summary_innovus:
+                  - report_late_paths:
+                  - report_power_innovus:
+                  - report_finish:
+            - SCHEDULE:
+                args: -flow report_prects -include_in_metrics
+                enabled: "!report_none && !report_inline && !report_defer"
+      - cts:
+          args: -owner cadence
+          features:
+          steps:
+            - block_start:
+            - init_innovus:
+            - add_clock_tree:
+            - add_tieoffs:
+            - block_finish:
+            - write_output_screenshot:
+            - report_postcts:
+                enabled: "!report_none && report_inline && !report_defer"
+            - SCHEDULE:
+                args: -flow report_postcts -include_in_metrics
+                enabled: "!report_none && !report_inline && !report_defer"
+      - postcts:
+          args: -owner cadence
+          features:
+          steps:
+            - block_start:
+            - init_innovus:
+            - run_opt_postcts_hold:
+            - block_finish:
+            - write_output_screenshot:
+            - report_postcts:
+                enabled: "!report_none && report_inline && !report_defer"
+            - SCHEDULE:
+                args: -flow report_postcts -include_in_metrics
+                enabled: "!report_none && !report_inline && !report_defer"
+      - route:
+          args: -owner cadence
+          features:
+          steps:
+            - block_start:
+            - init_innovus:
+            - add_fillers:
+            - run_route:
+            - block_finish:
+            - write_output_screenshot:
+            - report_postroute:
+                enabled: "!report_none && report_inline && !report_defer"
+            - SCHEDULE:
+                args: -flow report_postroute -include_in_metrics
+                enabled: "!report_none && !report_inline && !report_defer"
+      - postroute:
+          args: -owner cadence
+          features:
+          steps:
+            - block_start:
+            - init_innovus:
+            - run_opt_postroute:
+            - remove_blockages_halos:
+            - fix_antenna:
+            - fix_drc:
+            - block_finish:
+            - write_output_files:
+            - write_output_screenshot:
+            - report_postroute:
+                enabled: "!report_none && report_inline && !report_defer"
+            - SCHEDULE:
+                args: -flow report_postroute -include_in_metrics
+                enabled: "!report_none && !report_inline && !report_defer"
+            - innovus_to_lec:
+                enabled: "report_lec"
+            - innovus_to_tempus:
+            - innovus_to_quantus:
+      # Signoff Commented out to prevent flow error due to bug
+      #      - SCHEDULE_postroute: -flow signoff -no_sync
+      #- opt_signoff:
+      #    args: -owner cadence
+      #    features:
+      #    enabled: "!flow_express && opt_signoff"
+      #    steps:
+      #      - block_start:
+      #      - init_innovus:
+      #      - run_opt_signoff:
+      #      - block_finish:
+      #      - report_postroute:
+      #          enabled: "!report_none && report_inline && !report_defer"
+      #      - SCHEDULE:
+      #          args: -flow report_postroute -include_in_metrics
+      #          enabled: "!report_none && !report_inline && !report_defer"
+      #      - innovus_to_tempus:
+      #      - innovus_to_quantus:
+      #      - SCHEDULE_opt_signoff: -flow signoff -no_sync
+
+#-------------------------------------------------------------------------------
+# init_genus
+#-------------------------------------------------------------------------------
+  init_genus:
+    args: -owner cadence -tool genus
+    features:
+    steps:
+      - init_genus_yaml:
+      - init_genus_user:
+
+#-------------------------------------------------------------------------------
+# init_innovus
+#-------------------------------------------------------------------------------
+  init_innovus:
+    args: -owner cadence -tool innovus
+    features:
+    steps:
+      - init_innovus_yaml:
+      - init_innovus_user:
+
+#-------------------------------------------------------------------------------
+# eco
+#-------------------------------------------------------------------------------
+  eco:
+    args: -owner cadence -tool innovus -tool_options -disable_user_startup
+    features:
+    steps:
+      - eco_start:
+      - init_innovus:
+      - init_eco:
+      - run_place_eco:
+      - run_route_eco:
+      - eco_finish:
+      - report_postroute:
+          enabled: "!report_none && report_inline && !report_defer"
+      - SCHEDULE:
+          args: -flow report_postroute -include_in_metrics
+          enabled: "!report_none && !report_inline && !report_defer"
+      - innovus_to_tempus:
+      - innovus_to_quantus:
+      - SCHEDULE_eco: -flow signoff -no_sync
+
+#-------------------------------------------------------------------------------
+# report_synth
+#-------------------------------------------------------------------------------
+  report_synth:
+    args: -owner cadence -tool genus -tool_options -disable_user_startup
+    features:
+    steps:
+      - report_start:
+      - init_genus:
+      - report_area_genus:
+      - report_late_summary_genus:
+      - report_late_paths:
+      - report_power_genus:
+      - report_finish:
+
+#-------------------------------------------------------------------------------
+# fv_genus
+#-------------------------------------------------------------------------------
+  fv_genus:
+    args: -owner cadence -tool genus
+    features:
+    enabled: "report_lec"
+    steps:
+      - genus_to_lec:
+
+#-------------------------------------------------------------------------------
+# lec
+#-------------------------------------------------------------------------------
+  lec:
+    args: -owner cadence -tool flowtool
+    features:
+    enabled: "report_lec"
+    steps:
+      - run_lec:
+
+#-------------------------------------------------------------------------------
+# report_postcts
+#-------------------------------------------------------------------------------
+  report_postcts:
+    args: -owner cadence -tool innovus -tool_options -disable_user_startup
+    features:
+    steps:
+      - report_start:
+      - init_innovus:
+      - report_check_design:
+      - report_area_innovus:
+      - report_early_summary_innovus:
+      - report_early_paths:
+      - report_late_summary_innovus:
+      - report_late_paths:
+      - report_clock_timing:
+      - report_power_innovus:
+      - report_finish:
+
+#-------------------------------------------------------------------------------
+# report_postroute
+#-------------------------------------------------------------------------------
+  report_postroute:
+    args: -owner cadence -tool innovus -tool_options -disable_user_startup
+    features:
+    steps:
+      - report_start:
+      - init_innovus:
+      - report_check_design:
+      - report_area_innovus:
+      - report_early_summary_innovus:
+      - report_early_paths:
+      - report_early_summary_pba:
+          enabled: "report_pba"
+      - report_early_paths_pba:
+          enabled: "report_pba"
+      - report_late_summary_innovus:
+      - report_late_paths:
+      - report_late_summary_pba:
+          enabled: "report_pba"
+      - report_late_paths_pba:
+          enabled: "report_pba"
+      - report_clock_timing:
+      - report_power_innovus:
+      - report_route_drc:
+      - report_route_density:
+      - report_finish:
+
+#-------------------------------------------------------------------------------
+# fv_innovus
+#-------------------------------------------------------------------------------
+  fv_innovus:
+    args: -owner cadence -tool innovus
+    features:
+    enabled: "report_lec"
+    steps:
+      - innovus_to_lec:
+
+#-------------------------------------------------------------------------------
+# extract
+#-------------------------------------------------------------------------------
+  extract:
+    args: -owner cadence -tool flowtool
+    features:
+    steps:
+      - run_quantus:
+
+#-------------------------------------------------------------------------------
+# sta
+#-------------------------------------------------------------------------------
+  sta:
+    args: -owner cadence -tool tempus -tool_options -disable_user_startup
+    features:
+    steps:
+      - signoff_start:
+      - init_tempus:
+          args: -owner cadence
+          features:
+          steps:
+            - init_tempus_yaml:
+            - init_tempus_user:
+      - read_parasitics:
+      - set_propagated_clocks:
+      - update_timing:
+      - check_timing:
+      - report_late_summary:
+      - report_late_paths:
+      - report_late_summary_pba:
+          enabled: "report_pba"
+      - report_late_paths_pba:
+          enabled: "report_pba"
+      - report_early_summary:
+      - report_early_paths:
+      - report_early_summary_pba:
+          enabled: "report_pba"
+      - report_early_paths_pba:
+          enabled: "report_pba"
+      - signoff_finish:
+
+#-------------------------------------------------------------------------------
+# init_voltus
+#-------------------------------------------------------------------------------
+  init_voltus:
+    args: -owner cadence -tool voltus
+    features:
+    steps:
+      - init_voltus_yaml:
+      - init_voltus_user:
+
+#-------------------------------------------------------------------------------
+# ir_static
+#-------------------------------------------------------------------------------
+  ir_static:
+    args: -owner cadence -tool voltus -tool_options -disable_user_startup
+    features:
+    enabled: "report_static_ir"
+    steps:
+      - signoff_start:
+      - init_voltus:
+      - read_parasitics:
+      - add_switching_activity:
+      - set_pg_nets:
+      - report_power:
+      - set_power_data:
+      - set_rail_analysis:
+      - report_rail:
+      - signoff_finish:
+
+#-------------------------------------------------------------------------------
+# ir_dynamic
+#-------------------------------------------------------------------------------
+  ir_dynamic:
+    args: -owner cadence -tool voltus -tool_options -disable_user_startup
+    features:
+    enabled: "report_dynamic_ir"
+    steps:
+      - signoff_start:
+      - init_voltus:
+      - read_parasitics:
+      - add_switching_activity:
+      - set_pg_nets:
+      - report_power:
+      - set_power_data:
+      - set_rail_analysis:
+      - report_rail:
+      - signoff_finish:
+
+#-------------------------------------------------------------------------------
+# signoff
+#-------------------------------------------------------------------------------
+  signoff:
+    args: -owner cadence -tool innovus
+    features:
+    steps:
+      - schedule_signoff_subflows:
